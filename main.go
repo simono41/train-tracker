@@ -63,6 +63,10 @@ func main() {
     if err != nil {
         log.Fatalf("Ungültiger Wert für TAXI: %v", err)
     }
+    deleteAfter, err := strconv.Atoi(os.Getenv("DELETE_AFTER_MINUTES"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für DELETE_AFTER_MINUTES: %v", err)
+    }
     stationIDs := strings.Split(os.Getenv("STATION_IDS"), ",")
 
     db, err := sql.Open("mysql", dbDSN)
@@ -78,6 +82,7 @@ func main() {
                 savePosition(db, dep)
             }
         }
+        deleteOldEntries(db, deleteAfter)
         time.Sleep(1 * time.Minute)
     }
 }
@@ -145,4 +150,15 @@ func savePosition(db *sql.DB, dep Departure) {
     } else {
         log.Printf("Fehler bei der Überprüfung des existierenden Eintrags: %v\n", err)
     }
+}
+
+func deleteOldEntries(db *sql.DB, deleteAfterMinutes int) {
+    deleteTime := time.Now().Add(time.Duration(-deleteAfterMinutes) * time.Minute)
+    result, err := db.Exec("DELETE FROM trips WHERE timestamp < ?", deleteTime)
+    if err != nil {
+        log.Printf("Fehler beim Löschen alter Einträge: %v\n", err)
+        return
+    }
+    rowsAffected, _ := result.RowsAffected()
+    log.Printf("%d alte Einträge gelöscht\n", rowsAffected)
 }
