@@ -13,8 +13,12 @@ services:
       - DB_NAME=traindb
       - DB_DSN=root:password@tcp(mariadb:3306)/traindb
       - API_BASE_URL=http://db-rest:3000
-      - MAX_RESULTS=100
+      - MAX_RESULTS=200
+      - DURATION=240
       - BUS=false
+      - FERRY=false
+      - TRAM=false
+      - TAXI=false
       # Hildesheim HBF, Braunschweig HBF, Hannover HBF
       - STATION_IDS=8000169,8000049,8000152
     restart: always

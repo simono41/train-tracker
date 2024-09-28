@@ -43,9 +43,25 @@ func main() {
     if err != nil {
         log.Fatalf("Ungültiger Wert für MAX_RESULTS: %v", err)
     }
+    duration, err := strconv.Atoi(os.Getenv("DURATION"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für DURATION: %v", err)
+    }
     includeBus, err := strconv.ParseBool(os.Getenv("BUS"))
     if err != nil {
         log.Fatalf("Ungültiger Wert für BUS: %v", err)
+    }
+    includeFerry, err := strconv.ParseBool(os.Getenv("FERRY"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für FERRY: %v", err)
+    }
+    includeTram, err := strconv.ParseBool(os.Getenv("TRAM"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für TRAM: %v", err)
+    }
+    includeTaxi, err := strconv.ParseBool(os.Getenv("TAXI"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für TAXI: %v", err)
     }
     stationIDs := strings.Split(os.Getenv("STATION_IDS"), ",")
 
@@ -57,7 +73,7 @@ func main() {
 
     for {
         for _, stationID := range stationIDs {
-            departures := fetchDepartures(apiBaseURL, stationID, maxResults, includeBus)
+            departures := fetchDepartures(apiBaseURL, stationID, maxResults, duration, includeBus, includeFerry, includeTram, includeTaxi)
             for _, dep := range departures {
                 savePosition(db, dep)
             }
@@ -66,8 +82,9 @@ func main() {
     }
 }
 
-func fetchDepartures(apiBaseURL, stationID string, maxResults int, includeBus bool) []Departure {
-    url := fmt.Sprintf("%s/stops/%s/departures?results=%d&bus=%t", apiBaseURL, stationID, maxResults, includeBus)
+func fetchDepartures(apiBaseURL, stationID string, maxResults, duration int, includeBus, includeFerry, includeTram, includeTaxi bool) []Departure {
+    url := fmt.Sprintf("%s/stops/%s/departures?results=%d&duration=%d&bus=%t&ferry=%t&tram=%t&taxi=%t",
+        apiBaseURL, stationID, maxResults, duration, includeBus, includeFerry, includeTram, includeTaxi)
     resp, err := http.Get(url)
     if err != nil {
         log.Printf("Fehler beim Abrufen der Abfahrten für Station %s: %v\n", stationID, err)
