@@ -226,10 +226,8 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
         return
     }
 
-    today := whenTime.Format("2006-01-02")
-
     var existingID string
-    err = db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ?", dep.Line.FahrtNr, today).Scan(&existingID)
+    err = db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ?", dep.Line.FahrtNr).Scan(&existingID)
 
     if err == sql.ErrNoRows {
         id := uuid.New().String()
