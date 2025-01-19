@@ -19,9 +19,11 @@ import (
 )
 
 type Departure struct {
-    TripId string `json:"tripId"`
-    When   string `json:"when"`
-    Line   struct {
+    TripId         string    `json:"tripId"`
+    When           string    `json:"when"`
+    PlannedWhen    string    `json:"plannedWhen"`
+    Delay          int       `json:"delay"`
+    Line           struct {
         Name    string `json:"name"`
         FahrtNr string `json:"fahrtNr"`
     } `json:"line"`
@@ -191,6 +193,12 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
         return
     }
 
+    plannedWhenTime, err := time.Parse(time.RFC3339, dep.PlannedWhen)
+    if err != nil {
+        log.Printf("Fehler beim Parsen der geplanten Zeit für TripID %s: %v\n", dep.TripId, err)
+        return
+    }
+
     today := whenTime.Format("2006-01-02")
 
     var existingID string
@@ -198,23 +206,43 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
 
     if err == sql.ErrNoRows {
         id := uuid.New().String()
-        _, err = db.Exec("INSERT INTO trips (id, timestamp, train_name, fahrt_nr, trip_id, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            id, whenTime, dep.Line.Name, dep.Line.FahrtNr, dep.TripId, latitude, longitude)
+        _, err = db.Exec("INSERT INTO trips (id, timestamp, planned_timestamp, delay, train_name, fahrt_nr, trip_id, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            id, whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.Line.FahrtNr, dep.TripId, latitude, longitude)
         if err != nil {
             log.Printf("Fehler beim Speichern der neuen Position für TripID %s: %v\n", dep.TripId, err)
         } else {
-            log.Printf("Neue Position gespeichert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f)\n", id, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude)
+            log.Printf("Neue Position gespeichert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d)\n", id, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay)
         }
     } else if err == nil {
-        _, err = db.Exec("UPDATE trips SET timestamp = ?, train_name = ?, trip_id = ?, latitude = ?, longitude = ? WHERE id = ?",
-            whenTime, dep.Line.Name, dep.TripId, latitude, longitude, existingID)
+        _, err = db.Exec("UPDATE trips SET timestamp = ?, planned_timestamp = ?, delay = ?, train_name = ?, trip_id = ?, latitude = ?, longitude = ? WHERE id = ?",
+            whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.TripId, latitude, longitude, existingID)
         if err != nil {
             log.Printf("Fehler beim Aktualisieren der Position für TripID %s: %v\n", dep.TripId, err)
         } else {
-            log.Printf("Position aktualisiert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f)\n", existingID, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude)
+            log.Printf("Position aktualisiert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d)\n", existingID, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay)
         }
     } else {
         log.Printf("Fehler bei der Überprüfung des existierenden Eintrags für TripID %s: %v\n", dep.TripId, err)
+    }
+
+    updateDelayStats(db, dep.Line.FahrtNr, dep.Delay)
+}
+
+func updateDelayStats(db *sql.DB, fahrtNr string, delay int) {
+    var id string
+    err := db.QueryRow("SELECT id FROM delay_stats WHERE fahrt_nr = ?", fahrtNr).Scan(&id)
+
+    if err == sql.ErrNoRows {
+        id = uuid.New().String()
+        _, err = db.Exec("INSERT INTO delay_stats (id, fahrt_nr, total_trips, delayed_trips, avg_delay, last_updated) VALUES (?, ?, 1, ?, ?, NOW())",
+            id, fahrtNr, delay > 300, delay)
+    } else if err == nil {
+        _, err = db.Exec("UPDATE delay_stats SET total_trips = total_trips + 1, delayed_trips = delayed_trips + ?, avg_delay = ((avg_delay * total_trips) + ?) / (total_trips + 1), last_updated = NOW() WHERE id = ?",
+            delay > 300, delay, id)
+    }
+
+    if err != nil {
+        log.Printf("Fehler beim Aktualisieren der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
     }
 }
 
@@ -298,3 +326,4 @@ func logDatabaseStats(db *sql.DB) {
     }
     log.Printf("Aktuelle Anzahl der Einträge in der Datenbank: %d\n", count)
 }
+

@@ -5,5 +5,16 @@ CREATE TABLE IF NOT EXISTS trips (
     timestamp DATETIME,
     train_name VARCHAR(50),
     fahrt_nr VARCHAR(20),
-    trip_id VARCHAR(255)
+    trip_id VARCHAR(255),
+    planned_timestamp DATETIME,
+    delay INT
+);
+
+CREATE TABLE IF NOT EXISTS delay_stats (
+    id VARCHAR(36) PRIMARY KEY,
+    fahrt_nr VARCHAR(255),
+    total_trips INT,
+    delayed_trips INT,
+    avg_delay FLOAT,
+    last_updated DATETIME
 );

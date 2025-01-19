@@ -15,7 +15,7 @@ services:
       - MAX_RESULTS=200
       - DURATION=240
       - DELETE_AFTER_MINUTES=30
-      - UPDATE_INTERVAL_MINUTES=3
+      - UPDATE_INTERVAL_MINUTES=1
       # Hildesheim HBF, Braunschweig HBF, Hannover HBF
       - STATION_IDS=8000169,8000049,8000152
     restart: always
