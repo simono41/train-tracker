@@ -195,6 +195,9 @@ func fetchTripDetails(apiBaseURL, tripID string) (*TripDetails, error) {
 }
 
 func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
+    // Füge einen 3-Sekunden-Sleeper hinzu
+    time.Sleep(3 * time.Second)
+
     tripDetails, err := fetchTripDetails(apiBaseURL, dep.TripId)
     if err != nil {
         log.Printf("Fehler beim Abrufen der Zugdetails für TripID %s: %v\n", dep.TripId, err)
