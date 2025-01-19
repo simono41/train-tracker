@@ -86,6 +86,16 @@ func main() {
         updateInterval = 1
     }
 
+    transferTimeStr := os.Getenv("TRANSFER_TIME")
+    transferTime, err := time.Parse("15:04", transferTimeStr)
+    if err != nil {
+        log.Printf("Ungültiger Wert für TRANSFER_TIME, verwende Standardwert 23:00")
+        transferTime = time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 23, 0, 0, 0, time.Local)
+    } else {
+        now := time.Now()
+        transferTime = time.Date(now.Year(), now.Month(), now.Day(), transferTime.Hour(), transferTime.Minute(), 0, 0, time.Local)
+    }
+
     db, err := sql.Open("mysql", dbDSN)
     if err != nil {
         log.Fatal("Fehler beim Verbinden mit der Datenbank: ", err)
@@ -109,12 +119,19 @@ func main() {
             deleteOldEntries(db, deleteAfter)
         case <-ticker.C:
             logDatabaseStats(db)
+        default:
+            now := time.Now()
+            if now.After(transferTime) {
+                transferDailyDelayStats(db)
+                transferTime = time.Date(now.Year(), now.Month(), now.Day()+1, transferTime.Hour(), transferTime.Minute(), 0, 0, time.Local)
+            }
+            time.Sleep(1 * time.Minute)
         }
     }
 }
 
 func fetchDepartures(apiBaseURL, stationID string, duration int) []Departure {
-    url := fmt.Sprintf("%s/stops/%s/departures?duration=%d&linesOfStops=false&remarks=true&language=en&nationalExpress=true&national=true&regionalExpress=true&regional=true&suburban=true&bus=false&ferry=false&subway=false&tram=false&taxi=false&pretty=true",
+    url := fmt.Sprintf("%s/stops/%s/departures?duration=%d&linesOfStops=false&remarks=true&language=en&nationalExpress=true&national=true&regionalExpress=true&regional=true&suburban=true&bus=false&ferry=false&subway=false&tram=false&taxi=false&pretty=false",
         apiBaseURL, stationID, duration)
     resp, err := http.Get(url)
     if err != nil {
@@ -147,7 +164,7 @@ func fetchDepartures(apiBaseURL, stationID string, duration int) []Departure {
 
 func fetchTripDetails(apiBaseURL, tripID string) (*TripDetails, error) {
     escapedTripID := url.QueryEscape(tripID)
-    url := fmt.Sprintf("%s/trips/%s?stopovers=true&remarks=true&polyline=true&language=en", apiBaseURL, escapedTripID)
+    url := fmt.Sprintf("%s/trips/%s?stopovers=true&remarks=true&polyline=true&language=en&pretty=false", apiBaseURL, escapedTripID)
     resp, err := http.Get(url)
     if err != nil {
         return nil, fmt.Errorf("Fehler beim Abrufen der Zugdetails: %v", err)
@@ -225,24 +242,87 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
         log.Printf("Fehler bei der Überprüfung des existierenden Eintrags für TripID %s: %v\n", dep.TripId, err)
     }
 
-    updateDelayStats(db, dep.Line.FahrtNr, dep.Delay)
+    updateTodayDelayStats(db, dep.Line.FahrtNr, dep.Line.Name, dep.Delay, whenTime)
 }
 
-func updateDelayStats(db *sql.DB, fahrtNr string, delay int) {
-    var id string
-    err := db.QueryRow("SELECT id FROM delay_stats WHERE fahrt_nr = ?", fahrtNr).Scan(&id)
+func updateTodayDelayStats(db *sql.DB, fahrtNr, trainName string, delay int, timestamp time.Time) {
+    var existingID string
+    err := db.QueryRow("SELECT id FROM today_delay_stats WHERE fahrt_nr = ? AND DATE(timestamp) = CURDATE()", fahrtNr).Scan(&existingID)
 
     if err == sql.ErrNoRows {
-        id = uuid.New().String()
-        _, err = db.Exec("INSERT INTO delay_stats (id, fahrt_nr, total_trips, delayed_trips, avg_delay, last_updated) VALUES (?, ?, 1, ?, ?, NOW())",
-            id, fahrtNr, delay > 300, delay)
+        // Kein existierender Eintrag, führe INSERT aus
+        _, err = db.Exec(`
+            INSERT INTO today_delay_stats (id, fahrt_nr, train_name, delay, timestamp)
+            VALUES (UUID(), ?, ?, ?, ?)
+        `, fahrtNr, trainName, delay, timestamp)
+        if err != nil {
+            log.Printf("Fehler beim Einfügen der heutigen Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+        }
     } else if err == nil {
-        _, err = db.Exec("UPDATE delay_stats SET total_trips = total_trips + 1, delayed_trips = delayed_trips + ?, avg_delay = ((avg_delay * total_trips) + ?) / (total_trips + 1), last_updated = NOW() WHERE id = ?",
-            delay > 300, delay, id)
+        // Existierender Eintrag gefunden, führe UPDATE aus
+        _, err = db.Exec(`
+            UPDATE today_delay_stats
+            SET train_name = ?, delay = ?, timestamp = ?
+            WHERE id = ?
+        `, trainName, delay, timestamp, existingID)
+        if err != nil {
+            log.Printf("Fehler beim Aktualisieren der heutigen Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+        }
+    } else {
+        log.Printf("Fehler beim Überprüfen der heutigen Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+    }
+}
+
+func transferDailyDelayStats(db *sql.DB) {
+    rows, err := db.Query("SELECT fahrt_nr, train_name, delay FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
+    if err != nil {
+        log.Printf("Fehler beim Abrufen der heutigen Verspätungsstatistiken: %v\n", err)
+        return
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var fahrtNr, trainName string
+        var delay int
+        if err := rows.Scan(&fahrtNr, &trainName, &delay); err != nil {
+            log.Printf("Fehler beim Scannen der Verspätungsdaten: %v\n", err)
+            continue
+        }
+
+        var existingID string
+        err := db.QueryRow("SELECT id FROM delay_stats WHERE fahrt_nr = ?", fahrtNr).Scan(&existingID)
+
+        if err == sql.ErrNoRows {
+            // Kein existierender Eintrag, führe INSERT aus
+            _, err = db.Exec(`
+                INSERT INTO delay_stats (id, fahrt_nr, total_trips, delayed_trips, avg_delay, last_updated)
+                VALUES (UUID(), ?, 1, ?, ?, NOW())
+            `, fahrtNr, delay > 300, delay)
+            if err != nil {
+                log.Printf("Fehler beim Einfügen der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+            }
+        } else if err == nil {
+            // Existierender Eintrag gefunden, führe UPDATE aus
+            _, err = db.Exec(`
+                UPDATE delay_stats
+                SET total_trips = total_trips + 1,
+                    delayed_trips = delayed_trips + ?,
+                    avg_delay = ((avg_delay * total_trips) + ?) / (total_trips + 1),
+                    last_updated = NOW()
+                WHERE id = ?
+            `, delay > 300, delay, existingID)
+            if err != nil {
+                log.Printf("Fehler beim Aktualisieren der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+            }
+        } else {
+            log.Printf("Fehler beim Überprüfen der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+        }
     }
 
+    // Löschen Sie die heutigen Statistiken nach der Übertragung
+    _, err = db.Exec("DELETE FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
     if err != nil {
-        log.Printf("Fehler beim Aktualisieren der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+        log.Printf("Fehler beim Löschen der heutigen Verspätungsstatistiken: %v\n", err)
     }
 }
 
