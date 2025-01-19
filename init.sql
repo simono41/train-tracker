@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS trips (
     trip_id VARCHAR(255),
     planned_timestamp DATETIME,
     delay INT,
+    destination VARCHAR(255),
     INDEX idx_fahrt_nr_timestamp (fahrt_nr, timestamp)
 );
 

@@ -15,10 +15,12 @@ services:
       - MAX_RESULTS=200
       - DURATION=240
       - DELETE_AFTER_MINUTES=30
-      - UPDATE_INTERVAL_MINUTES=1
-      - TRANSFER_TIME=17:00
+      - UPDATE_INTERVAL_MINUTES=5
+      - TRANSFER_TIME=19:00
       # Hildesheim HBF, Braunschweig HBF, Hannover HBF
       - STATION_IDS=8000169,8000049,8000152
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
     restart: always
     networks:
       default:

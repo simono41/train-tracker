@@ -233,20 +233,20 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
 
     if err == sql.ErrNoRows {
         id := uuid.New().String()
-        _, err = db.Exec("INSERT INTO trips (id, timestamp, planned_timestamp, delay, train_name, fahrt_nr, trip_id, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            id, whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.Line.FahrtNr, dep.TripId, latitude, longitude)
+        _, err = db.Exec("INSERT INTO trips (id, timestamp, planned_timestamp, delay, train_name, fahrt_nr, trip_id, latitude, longitude, destination) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            id, whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.Line.FahrtNr, dep.TripId, latitude, longitude, tripDetails.Destination.Name)
         if err != nil {
             log.Printf("Fehler beim Speichern der neuen Position für TripID %s: %v\n", dep.TripId, err)
         } else {
-            log.Printf("Neue Position gespeichert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d)\n", id, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay)
+            log.Printf("Neue Position gespeichert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d, Ziel: %s)\n", id, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay, tripDetails.Destination.Name)
         }
     } else if err == nil {
-        _, err = db.Exec("UPDATE trips SET timestamp = ?, planned_timestamp = ?, delay = ?, train_name = ?, trip_id = ?, latitude = ?, longitude = ? WHERE id = ?",
-            whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.TripId, latitude, longitude, existingID)
+        _, err = db.Exec("UPDATE trips SET timestamp = ?, planned_timestamp = ?, delay = ?, train_name = ?, trip_id = ?, latitude = ?, longitude = ?, destination = ? WHERE id = ?",
+            whenTime, plannedWhenTime, dep.Delay, dep.Line.Name, dep.TripId, latitude, longitude, tripDetails.Destination.Name, existingID)
         if err != nil {
             log.Printf("Fehler beim Aktualisieren der Position für TripID %s: %v\n", dep.TripId, err)
         } else {
-            log.Printf("Position aktualisiert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d)\n", existingID, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay)
+            log.Printf("Position aktualisiert (ID: %s, Zug: %s, FahrtNr: %s, Lat: %f, Lon: %f, Verspätung: %d, Ziel: %s)\n", existingID, dep.Line.Name, dep.Line.FahrtNr, latitude, longitude, dep.Delay, tripDetails.Destination.Name)
         }
     } else {
         log.Printf("Fehler bei der Überprüfung des existierenden Eintrags für TripID %s: %v\n", dep.TripId, err)
