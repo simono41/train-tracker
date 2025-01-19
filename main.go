@@ -284,12 +284,16 @@ func updateTodayDelayStats(db *sql.DB, fahrtNr, trainName string, delay int, tim
 }
 
 func transferDailyDelayStats(db *sql.DB) {
+    log.Println("Starte tägliche Übertragung der Verspätungsstatistiken")
+    
     rows, err := db.Query("SELECT fahrt_nr, train_name, delay FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
     if err != nil {
         log.Printf("Fehler beim Abrufen der heutigen Verspätungsstatistiken: %v\n", err)
         return
     }
     defer rows.Close()
+
+    var totalTransferred, totalUpdated, totalInserted int
 
     for rows.Next() {
         var fahrtNr, trainName string
@@ -310,6 +314,9 @@ func transferDailyDelayStats(db *sql.DB) {
             `, fahrtNr, delay > 300, delay)
             if err != nil {
                 log.Printf("Fehler beim Einfügen der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+            } else {
+                totalInserted++
+                log.Printf("Neue Verspätungsstatistik eingefügt für FahrtNr %s (Zug: %s, Verspätung: %d)\n", fahrtNr, trainName, delay)
             }
         } else if err == nil {
             // Existierender Eintrag gefunden, führe UPDATE aus
@@ -323,17 +330,27 @@ func transferDailyDelayStats(db *sql.DB) {
             `, delay > 300, delay, existingID)
             if err != nil {
                 log.Printf("Fehler beim Aktualisieren der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
+            } else {
+                totalUpdated++
+                log.Printf("Verspätungsstatistik aktualisiert für FahrtNr %s (Zug: %s, Verspätung: %d)\n", fahrtNr, trainName, delay)
             }
         } else {
             log.Printf("Fehler beim Überprüfen der Verspätungsstatistiken für FahrtNr %s: %v\n", fahrtNr, err)
         }
+
+        totalTransferred++
     }
 
     // Löschen Sie die heutigen Statistiken nach der Übertragung
-    _, err = db.Exec("DELETE FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
+    result, err := db.Exec("DELETE FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
     if err != nil {
         log.Printf("Fehler beim Löschen der heutigen Verspätungsstatistiken: %v\n", err)
+    } else {
+        rowsAffected, _ := result.RowsAffected()
+        log.Printf("%d Einträge aus today_delay_stats gelöscht\n", rowsAffected)
     }
+
+    log.Printf("Tägliche Übertragung abgeschlossen. Gesamt: %d, Eingefügt: %d, Aktualisiert: %d\n", totalTransferred, totalInserted, totalUpdated)
 }
 
 func calculateCurrentPosition(trip *TripDetails, currentTime time.Time) (float64, float64) {

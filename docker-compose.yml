@@ -16,7 +16,7 @@ services:
       - DURATION=240
       - DELETE_AFTER_MINUTES=30
       - UPDATE_INTERVAL_MINUTES=5
-      - TRANSFER_TIME=19:00
+      - TRANSFER_TIME=23:55
       # Hildesheim HBF, Braunschweig HBF, Hannover HBF
       - STATION_IDS=8000169,8000049,8000152
     volumes:
