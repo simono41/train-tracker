@@ -78,6 +78,12 @@ func main() {
     }
     stationIDs := strings.Split(os.Getenv("STATION_IDS"), ",")
 
+    updateInterval, err := strconv.Atoi(os.Getenv("UPDATE_INTERVAL_MINUTES"))
+    if err != nil || updateInterval <= 0 {
+        log.Println("Ungültiger oder fehlender Wert für UPDATE_INTERVAL_MINUTES, verwende Standardwert von 1 Minute")
+        updateInterval = 1
+    }
+
     db, err := sql.Open("mysql", dbDSN)
     if err != nil {
         log.Fatal("Fehler beim Verbinden mit der Datenbank: ", err)
@@ -85,25 +91,23 @@ func main() {
     defer db.Close()
 
     ticker := time.NewTicker(5 * time.Minute)
+    updateTicker := time.NewTicker(time.Duration(updateInterval) * time.Minute)
     defer ticker.Stop()
+    defer updateTicker.Stop()
 
     for {
-        for _, stationID := range stationIDs {
-            departures := fetchDepartures(apiBaseURL, stationID, duration)
-            for _, dep := range departures {
-                savePosition(db, dep, apiBaseURL)
-            }
-        }
-        deleteOldEntries(db, deleteAfter)
-        
         select {
+        case <-updateTicker.C:
+            for _, stationID := range stationIDs {
+                departures := fetchDepartures(apiBaseURL, stationID, duration)
+                for _, dep := range departures {
+                    savePosition(db, dep, apiBaseURL)
+                }
+            }
+            deleteOldEntries(db, deleteAfter)
         case <-ticker.C:
             logDatabaseStats(db)
-        default:
-            // Do nothing
         }
-        
-        time.Sleep(1 * time.Minute)
     }
 }
 
