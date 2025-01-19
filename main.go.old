@@ -17,9 +17,12 @@ import (
 )
 
 type Departure struct {
-    TripId string `json:"tripId"`
-    When   string `json:"when"`
-    Line   struct {
+    CurrentTripPosition struct {
+        Latitude  float64 `json:"latitude"`
+        Longitude float64 `json:"longitude"`
+    } `json:"currentTripPosition"`
+    When time.Time `json:"when"`
+    Line struct {
         Name    string `json:"name"`
         FahrtNr string `json:"fahrtNr"`
     } `json:"line"`
@@ -36,9 +39,29 @@ func main() {
 
     dbDSN := os.Getenv("DB_DSN")
     apiBaseURL := os.Getenv("API_BASE_URL")
+    maxResults, err := strconv.Atoi(os.Getenv("MAX_RESULTS"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für MAX_RESULTS: %v", err)
+    }
     duration, err := strconv.Atoi(os.Getenv("DURATION"))
     if err != nil {
         log.Fatalf("Ungültiger Wert für DURATION: %v", err)
+    }
+    includeBus, err := strconv.ParseBool(os.Getenv("BUS"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für BUS: %v", err)
+    }
+    includeFerry, err := strconv.ParseBool(os.Getenv("FERRY"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für FERRY: %v", err)
+    }
+    includeTram, err := strconv.ParseBool(os.Getenv("TRAM"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für TRAM: %v", err)
+    }
+    includeTaxi, err := strconv.ParseBool(os.Getenv("TAXI"))
+    if err != nil {
+        log.Fatalf("Ungültiger Wert für TAXI: %v", err)
     }
     deleteAfter, err := strconv.Atoi(os.Getenv("DELETE_AFTER_MINUTES"))
     if err != nil {
@@ -54,7 +77,7 @@ func main() {
 
     for {
         for _, stationID := range stationIDs {
-            departures := fetchDepartures(apiBaseURL, stationID, duration)
+            departures := fetchDepartures(apiBaseURL, stationID, maxResults, duration, includeBus, includeFerry, includeTram, includeTaxi)
             for _, dep := range departures {
                 savePosition(db, dep)
             }
@@ -64,9 +87,9 @@ func main() {
     }
 }
 
-func fetchDepartures(apiBaseURL, stationID string, duration int) []Departure {
-    url := fmt.Sprintf("%s/stops/%s/departures?duration=%d&linesOfStops=false&remarks=false&language=de&nationalExpress=true&national=true&regionalExpress=true&regional=true&suburban=true&bus=false&ferry=false&subway=false&tram=false&taxi=false&pretty=true",
-        apiBaseURL, stationID, duration)
+func fetchDepartures(apiBaseURL, stationID string, maxResults, duration int, includeBus, includeFerry, includeTram, includeTaxi bool) []Departure {
+    url := fmt.Sprintf("%s/stops/%s/departures?results=%d&duration=%d&bus=%t&ferry=%t&tram=%t&taxi=%t",
+        apiBaseURL, stationID, maxResults, duration, includeBus, includeFerry, includeTram, includeTaxi)
     resp, err := http.Get(url)
     if err != nil {
         log.Printf("Fehler beim Abrufen der Abfahrten für Station %s: %v\n", stationID, err)
@@ -97,29 +120,28 @@ func fetchDepartures(apiBaseURL, stationID string, duration int) []Departure {
 }
 
 func savePosition(db *sql.DB, dep Departure) {
-    whenTime, err := time.Parse(time.RFC3339, dep.When)
-    if err != nil {
-        log.Printf("Fehler beim Parsen der Zeit: %v\n", err)
+    if dep.CurrentTripPosition.Latitude == 0 && dep.CurrentTripPosition.Longitude == 0 {
+        log.Println("Keine gültige Position verfügbar")
         return
     }
 
-    today := whenTime.Format("2006-01-02")
+    today := time.Now().Format("2006-01-02")
 
     var existingID string
-    err = db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ? AND DATE(timestamp) = ?", dep.Line.FahrtNr, today).Scan(&existingID)
+    err := db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ? AND DATE(timestamp) = ?", dep.Line.FahrtNr, today).Scan(&existingID)
 
     if err == sql.ErrNoRows {
         id := uuid.New().String()
-        _, err = db.Exec("INSERT INTO trips (id, timestamp, train_name, fahrt_nr, trip_id) VALUES (?, ?, ?, ?, ?)",
-            id, whenTime, dep.Line.Name, dep.Line.FahrtNr, dep.TripId)
+        _, err = db.Exec("INSERT INTO trips (id, latitude, longitude, timestamp, train_name, fahrt_nr) VALUES (?, ?, ?, ?, ?, ?)",
+            id, dep.CurrentTripPosition.Latitude, dep.CurrentTripPosition.Longitude, dep.When, dep.Line.Name, dep.Line.FahrtNr)
         if err != nil {
             log.Printf("Fehler beim Speichern der neuen Position: %v\n", err)
         } else {
             log.Printf("Neue Position gespeichert (ID: %s, Zug: %s, FahrtNr: %s)\n", id, dep.Line.Name, dep.Line.FahrtNr)
         }
     } else if err == nil {
-        _, err = db.Exec("UPDATE trips SET timestamp = ?, train_name = ?, trip_id = ? WHERE id = ?",
-            whenTime, dep.Line.Name, dep.TripId, existingID)
+        _, err = db.Exec("UPDATE trips SET latitude = ?, longitude = ?, timestamp = ?, train_name = ? WHERE id = ?",
+            dep.CurrentTripPosition.Latitude, dep.CurrentTripPosition.Longitude, dep.When, dep.Line.Name, existingID)
         if err != nil {
             log.Printf("Fehler beim Aktualisieren der Position: %v\n", err)
         } else {
