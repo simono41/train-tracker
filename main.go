@@ -229,7 +229,7 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
     today := whenTime.Format("2006-01-02")
 
     var existingID string
-    err = db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ? AND DATE(timestamp) = ?", dep.Line.FahrtNr, today).Scan(&existingID)
+    err = db.QueryRow("SELECT id FROM trips WHERE fahrt_nr = ?", dep.Line.FahrtNr, today).Scan(&existingID)
 
     if err == sql.ErrNoRows {
         id := uuid.New().String()
@@ -257,7 +257,7 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
 
 func updateTodayDelayStats(db *sql.DB, fahrtNr, trainName string, delay int, timestamp time.Time) {
     var existingID string
-    err := db.QueryRow("SELECT id FROM today_delay_stats WHERE fahrt_nr = ? AND DATE(timestamp) = CURDATE()", fahrtNr).Scan(&existingID)
+    err := db.QueryRow("SELECT id FROM today_delay_stats WHERE fahrt_nr = ?", fahrtNr).Scan(&existingID)
 
     if err == sql.ErrNoRows {
         // Kein existierender Eintrag, führe INSERT aus
@@ -286,7 +286,7 @@ func updateTodayDelayStats(db *sql.DB, fahrtNr, trainName string, delay int, tim
 func transferDailyDelayStats(db *sql.DB) {
     log.Println("Starte tägliche Übertragung der Verspätungsstatistiken")
     
-    rows, err := db.Query("SELECT fahrt_nr, train_name, delay FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
+    rows, err := db.Query("SELECT fahrt_nr, train_name, delay FROM today_delay_stats")
     if err != nil {
         log.Printf("Fehler beim Abrufen der heutigen Verspätungsstatistiken: %v\n", err)
         return
@@ -342,7 +342,7 @@ func transferDailyDelayStats(db *sql.DB) {
     }
 
     // Löschen Sie die heutigen Statistiken nach der Übertragung
-    result, err := db.Exec("DELETE FROM today_delay_stats WHERE DATE(timestamp) = CURDATE()")
+    result, err := db.Exec("DELETE FROM today_delay_stats")
     if err != nil {
         log.Printf("Fehler beim Löschen der heutigen Verspätungsstatistiken: %v\n", err)
     } else {
