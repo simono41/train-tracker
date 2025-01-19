@@ -112,6 +112,8 @@ func main() {
         case <-updateTicker.C:
             for _, stationID := range stationIDs {
                 departures := fetchDepartures(apiBaseURL, stationID, duration)
+                // Füge einen 1-Sekunden-Sleeper hinzu
+                time.Sleep(1 * time.Second)
                 for _, dep := range departures {
                     savePosition(db, dep, apiBaseURL)
                 }
@@ -195,8 +197,8 @@ func fetchTripDetails(apiBaseURL, tripID string) (*TripDetails, error) {
 }
 
 func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
-    // Füge einen 3-Sekunden-Sleeper hinzu
-    time.Sleep(3 * time.Second)
+    // Füge einen 1-Sekunden-Sleeper hinzu
+    time.Sleep(1 * time.Second)
 
     tripDetails, err := fetchTripDetails(apiBaseURL, dep.TripId)
     if err != nil {
@@ -206,6 +208,11 @@ func savePosition(db *sql.DB, dep Departure, apiBaseURL string) {
 
     currentTime := time.Now()
     longitude, latitude := calculateCurrentPosition(tripDetails, currentTime)
+
+    if dep.When == "" {
+        log.Printf("Warnung: Leerer Zeitstempel für FahrtNr %s, überspringe Eintrag\n", dep.Line.FahrtNr)
+        return
+    }
 
     whenTime, err := time.Parse(time.RFC3339, dep.When)
     if err != nil {
