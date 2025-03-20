@@ -12,6 +12,7 @@ Train Tracker ist eine in Go geschriebene Anwendung, die Echtzeitinformationen �
 - Erfassung und Analyse von Verspätungsdaten
 - Automatisches Löschen veralteter Einträge
 - Tägliche Übertragung und Aggregation von Verspätungsstatistiken
+- Berechnung von Durchschnitt und Median der Verspätungen
 
 ## Voraussetzungen
 
@@ -54,7 +55,7 @@ Die Anwendung verwendet drei Haupttabellen:
 
 1. `trips`: Speichert Informationen zu einzelnen Zugfahrten
 2. `today_delay_stats`: Speichert tägliche Verspätungsstatistiken
-3. `delay_stats`: Speichert aggregierte Verspätungsstatistiken
+3. `delay_stats`: Speichert aggregierte Verspätungsstatistiken, einschließlich Durchschnitt und Median der Verspätungen
 
 Detaillierte Tabellenstrukturen finden Sie in der `init.sql` Datei.
 
@@ -77,6 +78,7 @@ Die Anwendung wird nun kontinuierlich Abfahrtsinformationen abrufen, Zugposition
 
 - `main.go`: Hauptanwendungslogik und Einstiegspunkt des Programms
 - Funktionen wie `fetchDepartures()`, `fetchTripDetails()`, `savePosition()`, `calculateCurrentPosition()`, `updateTodayDelayStats()`, `transferDailyDelayStats()` und `deleteOldEntries()` implementieren die Kernfunktionalität
+- Neue Funktionen zur Berechnung des Medians und zur Aktualisierung der Verspätungsstatistiken wurden hinzugefügt
 
 ### Beitrag
 
