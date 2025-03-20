@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS delay_stats (
     total_trips INT,
     delayed_trips INT,
     avg_delay FLOAT,
+    median_delay FLOAT,
     last_updated DATETIME,
     INDEX idx_fahrt_nr (fahrt_nr)
 );
